@@ -1,0 +1,1 @@
+test/python/wannier90/** !text !filter !merge !diff
