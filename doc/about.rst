@@ -3,6 +3,6 @@
 About app4triqs
 ***************
 
-An example application using ``c2py + clair`` and TRIQS.
+An example application using TRIQS.
 
 Written and maintained by N. Wentzell with contributions from H. U.R. Strand.
