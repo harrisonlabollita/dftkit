@@ -1,6 +1,6 @@
 # ##############################################################################
 #
-# app4triqs - An example application using triqs and cpp2py
+# app4triqs - An example application using triqs
 #
 # Copyright (C) ...
 #
@@ -67,66 +67,29 @@ if(NOT IS_SUBPROJECT)
 endif()
 
 # Python Support
-option(PythonSupport "Build with Python support" ON)
-if(PythonSupport AND NOT TRIQS_WITH_PYTHON_SUPPORT)
-  message(FATAL_ERROR "TRIQS was installed without Python support. Cannot build the Python Interface. Disable the build with -DPythonSupport=OFF")
+if(NOT TRIQS_WITH_PYTHON_SUPPORT)
+  message(FATAL_ERROR "TRIQS was installed without Python support. TRIQS Python support is required.")
 endif()
 
 # Documentation
 option(Build_Documentation "Build documentation" OFF)
-if(NOT IS_SUBPROJECT AND (Build_Documentation AND NOT PythonSupport))
-  message(FATAL_ERROR "Build_Documentation=ON requires PythonSupport to be enabled")
-endif()
 
 # Testing
 option(Build_Tests "Build tests" ON)
 if(Build_Tests)
   enable_testing()
+  # When built as a dependency of a project configured with the LLVM sanitizers
+  # (-DASAN/-DUBSAN), our Python tests load that project's instrumented TRIQS
+  # libraries and need the sanitizer runtime preloaded. Locate it here so that
+  # SANITIZER_RT_PRELOAD is populated before the test commands are registered.
+  # No-op in a standalone build, where ASAN/UBSAN are unset.
+  if(ASAN)
+    find_package(sanitizer REQUIRED COMPONENTS asan)
+  endif()
+  if(UBSAN)
+    find_package(sanitizer REQUIRED COMPONENTS ubsan)
+  endif()
 endif()
-
-# ############
-# Global Compilation Settings
-
-# Build static libraries by default
-option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
-
-# Export the list of compile-commands into compile_commands.json
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Disable compiler extensions
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# No C++20 modules used. Disable module scanning (default ON for C++20+ with Ninja):
-# it injects transient @<obj>.modmap flags into compile_commands.json that break clair-c2py
-# binding generation when it replays those commands. No-op on CMake < 3.28.
-set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
-
-# Provide additional debugging information for Debug builds
-add_compile_options($<$<CONFIG:Debug>:-ggdb3>)
-
-# Create an Interface target for compiler warnings
-add_library(${PROJECT_NAME}_warnings INTERFACE)
-target_compile_options(${PROJECT_NAME}_warnings
-  INTERFACE
-    -Wall
-    -Wextra
-    -Wfloat-conversion
-    -Wpedantic
-    -Wno-sign-compare
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-comma-subscript>
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi> # Disable notes about ABI changes
-    $<$<CXX_COMPILER_ID:GNU>:-Wshadow=local>
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-attributes>
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-deprecated-comma-subscript>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-unknown-warning-option>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wshadow>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-gcc-compat>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-c++26-extensions>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-c++26-compat>
-    $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-Wno-c2y-extensions> # __COUNTER__ in SCOPE_EXIT
-    $<$<CXX_COMPILER_ID:IntelLLVM>:-Wno-tautological-constant-compare>
-)
 
 # Provide GNU Installation directories
 include(GNUInstallDirs)
@@ -137,18 +100,13 @@ include(GNUInstallDirs)
 # Find / Build dependencies
 add_subdirectory(deps)
 
-# Build and install the library
-add_subdirectory(c++/${PROJECT_NAME})
-
 # Tests
 if(Build_Tests)
   add_subdirectory(test)
 endif()
 
 # Python
-if(PythonSupport)
-  add_subdirectory(python/${PROJECT_NAME})
-endif()
+add_subdirectory(python/${PROJECT_NAME})
 
 # Docs
 if(NOT IS_SUBPROJECT AND Build_Documentation)
@@ -158,7 +116,7 @@ endif()
 # Additional configuration files
 add_subdirectory(share)
 
-# add packaging for automatic Versioning
+# add packaging for automatic versioning
 add_subdirectory(packaging)
 
 # #############

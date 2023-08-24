@@ -25,10 +25,7 @@ def platforms = [:]
 
 /****************** linux builds (in docker) */
 /* Each platform must have a corresponding Dockerfile.PLATFORM in triqs/packaging */
-def dockerPlatforms = ["ubuntu-clang", "ubuntu-gcc", "ubuntu-intel", "sanitize"]
-/* Platforms that regenerate the Python bindings via clair-c2py.
-   All others use the default (OFF) from c2py. */
-def regenPlatforms = ["ubuntu-clang"]
+def dockerPlatforms = ["ubuntu-clang", "ubuntu-gcc"]
 /* .each is currently broken in jenkins */
 for (int i = 0; i < dockerPlatforms.size(); i++) {
   def platform = dockerPlatforms[i]
@@ -42,8 +39,7 @@ for (int i = 0; i < dockerPlatforms.size(); i++) {
       """
       archiveArtifacts(artifacts: "Dockerfile.${env.STAGE_NAME}")
       /* build and tag */
-      def regen = regenPlatforms.contains(platform)
-      def args = regen ? '-DUpdate_Python_Bindings=ON' : ''
+      def args = ''
       if (platform == documentationPlatform)
         args += ' -DBuild_Documentation=ON'
       else if (platform == "sanitize")
