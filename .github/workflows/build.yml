@@ -120,13 +120,13 @@ jobs:
         cmake -S triqs -B triqs/build -G Ninja -DBuild_Tests=OFF -DCMAKE_INSTALL_PREFIX=$HOME/install
         cmake --build triqs/build --target install --verbose
 
-    - name: Build app4triqs
+    - name: Build triqs_dftkit
       run: |
         source $HOME/install/share/triqs/triqsvars.sh
         cmake -S . -B build -G Ninja
         cmake --build build --verbose
 
-    - name: Test app4triqs
+    - name: Test triqs_dftkit
       env:
         OPENBLAS_NUM_THREADS: "1"
       run: |
