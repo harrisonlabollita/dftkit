@@ -1,1 +1,2 @@
+test/python/wannier90/** filter=lfs diff=lfs merge=lfs -text
 test/python/wannier90/** !text !filter !merge !diff

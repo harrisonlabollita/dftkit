@@ -76,6 +76,7 @@ option(Build_Documentation "Build documentation" OFF)
 
 # Testing
 option(Build_Tests "Build tests" ON)
+option(Enable_LFS_Tests "Enable tests requiring Git LFS files (Wannier90)" OFF)
 if(Build_Tests)
   enable_testing()
 endif()
