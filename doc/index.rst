@@ -11,10 +11,10 @@ triqs_dftkit
       .. image:: _static/logo_github.png
          :width: 75%
          :align: center
-         :target: https://github.com/triqs/triqs_dftkit
+         :target: https://github.com/triqs/dftkit
 
 
-An example application using cpp2py and :ref:`TRIQS <triqslibs:welcome>`.
+DFT converters for :ref:`TRIQS <triqslibs:welcome>`, enabling DFT+DMFT calculations by converting output from various DFT codes to TRIQS-compatible HDF5 format.
 
 This documentation is generated based on `rst <https://de.wikipedia.org/wiki/ReStructuredText>`_ files
 and the comments in the sources and headers.

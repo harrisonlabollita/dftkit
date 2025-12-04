@@ -45,7 +45,7 @@ test:
     - python -c "import triqs_dftkit"
 
 about:
-  home: https://triqs.github.io/triqs_dftkit
+  home: https://triqs.github.io/dftkit
   license: GPL-3.0-or-later
   license_family: GPL
   license_file: LICENSE.txt

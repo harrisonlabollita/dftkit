@@ -1,77 +1,25 @@
-[![build](https://github.com/TRIQS/triqs_dftkit/workflows/build/badge.svg)](https://github.com/TRIQS/triqs_dftkit/actions?query=workflow%3Abuild)
+[![build](https://github.com/TRIQS/dftkit/workflows/build/badge.svg)](https://github.com/TRIQS/dftkit/actions?query=workflow%3Abuild)
 
-# triqs_dftkit - A skeleton for a TRIQS application
+# triqs_dftkit
 
-Initial Setup
--------------
+DFT converters for [TRIQS](https://triqs.github.io), enabling DFT+DMFT calculations by converting output from various DFT codes to TRIQS-compatible HDF5 format.
 
-To adapt this skeleton for a new TRIQS application, the following steps are necessary:
+## Supported DFT Codes
 
-* Create a repository, e.g. https://github.com/username/appname
+| Converter | Description |
+|-----------|-------------|
+| **Elk** | Elk all-electron DFT code |
+| **VASP** | Vienna Ab initio Simulation Package (includes PLOVasp tools) |
+| **Wien2k** | Wien2k LAPW code (includes dmftproj Fortran executable) |
+| **Wannier90** | Wannier tight-binding models |
+| **Quantum Espresso** | QE plane-wave DFT code |
+| **H(k)** | General tight-binding Hamiltonians |
 
-* Run the following commands in order after replacing **appname** accordingly
 
-```bash
-git clone https://github.com/triqs/triqs_dftkit --branch python_only appname
-cd appname
-./share/squash_history.sh
-./share/replace_and_rename.py appname
-git add -A && git commit -m "Adjust triqs_dftkit skeleton for appname"
-```
+## Documentation
 
-You can now add your github repository and push to it
+Documentation is available at https://triqs.github.io/dftkit
 
-```bash
-git remote add origin https://github.com/username/appname
-git remote update
-git push origin unstable
-```
+## License
 
-If you prefer to use the [SSH interface](https://help.github.com/en/articles/connecting-to-github-with-ssh)
-to the remote repository, replace the http link with e.g. `git@github.com:username/appname`.
-
-### Merging triqs_dftkit skeleton updates ###
-
-You can merge future changes to the triqs_dftkit skeleton into your project with the following commands
-
-```bash
-git remote update
-git merge triqs_dftkit_remote/python_only -X ours -m "Merge latest triqs_dftkit skeleton changes"
-```
-
-If you should encounter any conflicts resolve them and `git commit`.
-Finally we repeat the replace and rename command from the initial setup.
-
-```bash
-./share/replace_and_rename.py appname
-git commit --amend
-```
-
-Now you can compare against the previous commit with: 
-```bash
-git diff prev_git_hash
-````
-
-Getting Started
----------------
-
-After setting up your application as described above you should customize the following files and directories
-according to your needs (replace triqs_dftkit in the following by the name of your application)
-
-* Adjust or remove the `README.md` and `doc/ChangeLog.md` file
-* In the `python/triqs_dftkit` subdirectory add your Python source files.
-* In the `test/python` subdirectory adjust the example test `Basic.py` or add your own tests.
-* Adjust any documentation examples given as `*.rst` files in the doc directory.
-* Adjust the sphinx configuration in `doc/conf.py.in` as necessary.
-* The build and install process is identical to the one outline [here](https://triqs.github.io/triqs_dftkit/unstable/install.html).
-
-### Optional ###
-----------------
-
-* Add your email address to the bottom section of `Jenkinsfile` for Jenkins CI notification emails
-```
-End of build log:
-\${BUILD_LOG,maxLines=60}
-    """,
-    to: 'user@domain.org',
-```
+triqs_dftkit is released under the GNU General Public License v3.

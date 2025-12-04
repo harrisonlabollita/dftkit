@@ -1,6 +1,6 @@
 # ##############################################################################
 #
-# triqs_dftkit - An example application using triqs and cpp2py
+# triqs_dftkit - DFT converters for TRIQS
 #
 # Copyright (C) ...
 #

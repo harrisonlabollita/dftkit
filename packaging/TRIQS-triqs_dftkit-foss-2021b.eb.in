@@ -3,12 +3,12 @@ easyblock = 'CMakeMake'
 name = 'TRIQS-triqs_dftkit'
 version = '@PROJECT_VERSION@'
 
-homepage = 'https://triqs.github.io/triqs_dftkit/'
+homepage = 'https://triqs.github.io/dftkit/'
 description = """
- PROVIDE HERE A DESCRIPTION OF YOUR APPLICATION
+ DFT converters for TRIQS, enabling DFT+DMFT calculations.
 """
 
-docurls = ['https://triqs.github.io/triqs_dftkit/%(version_major_minor)s.x/']
+docurls = ['https://triqs.github.io/dftkit/%(version_major_minor)s.x/']
 software_license = 'LicenseGPLv3'
 
 toolchain = {'name': 'foss', 'version': '2021b'}
