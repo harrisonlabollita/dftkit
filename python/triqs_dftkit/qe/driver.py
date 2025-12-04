@@ -12,7 +12,7 @@ import numpy as np
 from h5 import HDFArchive
 import triqs.utility.mpi as mpi
 
-from .converter import Converter
+from ..wannier90.converter import Converter
 
 
 class DFTWorkflowError(Exception):
