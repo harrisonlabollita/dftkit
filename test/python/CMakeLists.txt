@@ -11,8 +11,4 @@ add_subdirectory(wien2k)
 add_subdirectory(hk)
 add_subdirectory(elk)
 add_subdirectory(vasp)
-
-# Wannier90 tests require LFS files
-if(Enable_LFS_Tests)
-  add_subdirectory(wannier90)
-endif()
+add_subdirectory(wannier90)
