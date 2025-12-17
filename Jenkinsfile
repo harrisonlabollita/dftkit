@@ -1,8 +1,8 @@
-def projectName = "triqs_dftkit" /* set to app/repo name */
+def projectName = "dftkit" /* set to app/repo name */
 
 def dockerName = projectName.toLowerCase();
 /* which platform to build documentation on */
-def documentationPlatform = ""
+def documentationPlatform = "ubuntu-clang"
 /* depend on triqs upstream branch/project */
 def triqsBranch = env.CHANGE_TARGET ?: env.BRANCH_NAME
 def triqsProject = '/TRIQS/triqs/' + triqsBranch.replaceAll('/', '%2F')
