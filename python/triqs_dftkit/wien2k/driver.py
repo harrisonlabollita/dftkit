@@ -12,19 +12,19 @@ class Driver(object):
 
     def run_update_stage(self, N_k, Ecorr, **kwargs):
         beta = kwargs.pop('beta'); mu   = kwargs.pop('mu')
-
-        write_charge_correction(N_k, Ecorr, beta, mu)
-
+        self.write_charge_correction(N_k, Ecorr, beta, mu)
         return 
 
-    def write_charge_correction(N_k, Ecorr, beta, mu):
+    def write_charge_correction(self, N_k, Ecorr, beta, mu):
         energy_unit = 13.605698 # eV to Ry
         if not mpi.is_master_node(): return
-        n_k = Nk.shape[0]
+
+        n_k = N_k.shape[0]
         with HDFArchive(f"{self.seedname}.h5", 'r') as ar:
             n_bands_per_k = ar['dft_input']['n_orbitals']
             SO            = ar['dft_input']['SO']
             SP            = ar['dft_input']['SP']
+
         def write_spin_block(file, Nksp, isp):
             file.write("%.14f\n" % (mu / energy_unit) )
             file.write("%.14f\n" % (beta * energy_unit) )
@@ -37,6 +37,7 @@ class Driver(object):
                     file.write("\n")
                 file.write("\n")
             file.write("%.16f\n" % Ecorr.real)
+
         if SP == 0:
             Nk_avg = 0.5 * (N_k[:, 0] + N_k[:, 1])
             with open(f"{self.seedname}.qdmft", "w") as f: write_spin_block(f, Nk_avg, 0)
