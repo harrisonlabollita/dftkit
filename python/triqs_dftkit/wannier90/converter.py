@@ -928,6 +928,7 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
     nnkp_filename = w90_seed + '.nnkp'
     locproj_filename = os.path.join(w90_seed_dir, 'LOCPROJ')
     outcar_filename = os.path.join(w90_seed_dir, 'OUTCAR')
+    abiout_filename = w90_seed + '.abinit'
 
     if os.path.isfile(nscf_filename):
         read_from = 'qe'
@@ -935,11 +936,14 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
     elif os.path.isfile(locproj_filename) and os.path.isfile(outcar_filename):
         read_from = 'vasp'
         mpi.report('Reading DFT band occupations from Vasp output {}'.format(locproj_filename))
+    elif os.path.isfile(abiout_filename):
+        read_from = 'abinit'
+        mpi.report("Reading DFT band occupations from ABINIT output {}".format(abiout_filename))
     else:
-        raise IOError('seedname.nscf.out or LOCPROJ and OUTCAR required in bloch_basis mode')
+        raise IOError('seedname.nscf.out or LOCPROJ and OUTCAR or seedname.abinit required in bloch_basis mode')
 
     assert n_spin_blocks == 1, 'spin-polarized not implemented'
-    assert read_from in ('qe', 'vasp')
+    assert read_from in ('qe', 'vasp', 'abinit')
 
     occupations = []
     reading_kpt_basis = False
@@ -981,7 +985,7 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
             occs = k_block[int(len(k_block)/2)+1:]
             flattened_occs = [float(item) for sublist in occs for item in sublist]
             occupations.append(flattened_occs)
-    else:
+    elif read_from == 'vasp':
         # Reads LOCPROJ
         with open(locproj_filename, 'r') as file:
             header = file.readline()
@@ -1001,6 +1005,33 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
                     lines_read_kpt_basis += 1
                     if lines_read_kpt_basis == 3:
                         break
+
+    elif read_from == 'abinit':
+        occupations = []
+        with open(abiout_filename, 'r') as out_file:
+            out_data = out_file.readlines()
+
+        #TODO: are the prints debug or needed?
+        size_block = 0
+        for l, line in enumerate(out_data):
+            if 'Fermie' in line:
+                fermi_energy = float(line.split()[-1])*27.2114079527 # Hartree to eV
+                print("Fermi energy: ", fermi_energy)
+            elif "Nkpt" in line:
+                n_kpt = int(line.split()[-1])
+                print("Nkpt: ", n_kpt)
+            elif "Nband" in line:
+                n_ks = int(line.split()[-1])
+                print("Nband: ", n_ks)
+                size_block = int(np.ceil(n_ks/12))
+                print(size_block)
+
+            # TODO: make explicit variable names
+            if "k-point" in line:
+                k_block = [line2.split() for line2 in out_data[l+1:l+1+size_block]]
+                occs = k_block
+                occupations.append([float(item)/2 for sublist in occs for item in sublist])
+
 
     # assume that all bands contribute, then remove from exclude_bands; python indexing
     corr_bands = list(range(n_ks))
