@@ -21,15 +21,7 @@ class DFTWorkflowError(Exception):
 
 
 # Default environment variables to preserve for subprocess execution
-_DEFAULT_ENV_VARS = [
-    'PATH',
-    'LD_LIBRARY_PATH',
-    'SHELL',
-    'PWD',
-    'HOME',
-    'OMP_NUM_THREADS',
-    'OMPI_MCA_btl_vader_single_copy_mechanism'
-]
+_DEFAULT_ENV_VARS = ['PATH', 'LD_LIBRARY_PATH', 'SHELL', 'PWD', 'HOME', 'OMP_NUM_THREADS', 'OMPI_MCA_btl_vader_single_copy_mechanism']
 
 @dataclass
 class MPIHandler:
@@ -214,14 +206,7 @@ class Driver:
 
             self.mpi_handler.report(f"[{datetime.now()}] running {' '.join(command)} < {infile} > {outfile}")
 
-            result = subprocess.run(
-                    command,
-                    stdin=inp,
-                    stdout=out,
-                    stderr=err,
-                    env=self.mpi_handler.get_env_vars(),
-                    text=True,
-                    )
+            result = subprocess.run(command, stdin=inp, stdout=out, stderr=err, env=self.mpi_handler.get_env_vars(), text=True)
 
             if result.returncode != 0:
                 error_msg = f"{executable} ({step_name}) failed with code {result.returncode}"
@@ -360,17 +345,16 @@ class Driver:
         if mpi.is_master_node():
             with HDFArchive(f"{self.seedname}.h5", "r") as ar:
                 fermi_weights = ar['dft_misc_input']['dft_fermi_weights']
-
                 n_bands_per_k = ar['dft_input']['n_orbitals']
                 Hk            = ar['dft_input']['hopping']
                 bz_weights    = ar['dft_input']['bz_weights']
-                spin_to_data_index = [0,0] if ar['dft_input']['SO'] == 0 else [0,1]
+                spin_to_data_index = [0,1] if ar['dft_input']['SP'] else [0,0]
 
         fermi_weights = mpi.bcast(fermi_weights)
         n_bands_per_k = mpi.bcast(n_bands_per_k)
         Hk            = mpi.bcast(Hk)
         bz_weights    = mpi.bcast(bz_weights)
-        spin_to_index = mpi.bcast(spin_to_data_index)
+        spin_to_data_index = mpi.bcast(spin_to_data_index)
         mpi.barrier()
 
         density_matrix_dft = [ [ fermi_weights[ik,idx,:].astype(complex) for ik in range(n_k) ] for idx in spin_to_data_index]
@@ -437,7 +421,7 @@ class Driver:
                         print(f"The corrected DFT energy is: {dft_energy} eV")
                         break
 
-        dft_energy = mpi.bcast(dft_energy);
+        dft_energy = mpi.bcast(dft_energy)
         return dft_energy
 
     def run_initial_stage(self, **kwargs) -> int:
