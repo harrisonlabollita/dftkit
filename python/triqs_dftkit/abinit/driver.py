@@ -43,8 +43,8 @@ class Driver(object):
             for spin, idx in enumerate(spin_to_data_index):
                 nb = n_bands_per_k[ik, idx]
                 diag_indices = np.diag_indices(nb)
-                N_k[spin, ik][diag_indices] -= density_matrix_dft[spin][ik][:nb]
-                band_energy_correction += np.dot(N_k[spin][ik], Hk[ik,idx,:nb,:nb]).trace().real * bz_weights[ik]
+                N_k[ik, spin][diag_indices] -= density_matrix_dft[spin][ik][:nb]
+                band_energy_correction += np.dot(N_k[ik][spin], Hk[ik,idx,:nb,:nb]).trace().real * bz_weights[ik]
 
         if mpi.is_master_node():
             kpts_to_write = np.arange(n_k)
@@ -55,8 +55,8 @@ class Driver(object):
                     f.write(f" {index+1} {ib1} {ib2}\n")
                     for inu in range(n_bands_per_k[ik, 0]):
                         for imu in range(n_bands_per_k[ik, 0]):
-                            valre = (N_k[0][ik][inu, imu].real + N_k[1][ik][inu, imu].real) /2.0
-                            valim = (N_k[0][ik][inu, imu].imag + N_k[1][ik][inu, imu].imag) /2.0
+                            valre = (N_k[ik][0][inu, imu].real + N_k[ik][1][inu, imu].real) /2.0
+                            valim = (N_k[ik][0][inu, imu].imag + N_k[ik][1][inu, imu].imag) /2.0
                             f.write(f" {valre:.14f} {valim:.14f}")
                         f.write("\n")
 
