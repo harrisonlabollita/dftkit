@@ -15,7 +15,7 @@ class Driver(object):
         pass
 
     def band_energy_and_write_charge_update(self, N_k):
-        n_k = N_k.shape[1]
+        n_k = N_k.shape[0]
         fermi_weights, n_bands_per_k, band_window, Hk, bz_weights = None, None, None, None, None
         spin_to_data_index = [0,0]
 
@@ -48,7 +48,7 @@ class Driver(object):
 
         if mpi.is_master_node():
             kpts_to_write = np.arange(n_k)
-            with open("abiout.delta_N", "w") as f:
+            with open(f"{self.seedname}.deltaN", "w") as f:
                 f.write(f" {n_k} - 1 ! Number of k-points, default number of bands\n")
                 for index, ik in enumerate(kpts_to_write):
                     ib1, ib2 = band_window[0][ik,0], band_window[0][ik,1]
@@ -57,7 +57,7 @@ class Driver(object):
                         for imu in range(n_bands_per_k[ik, 0]):
                             valre = (N_k[0][ik][inu, imu].real + N_k[1][ik][inu, imu].real) /2.0
                             valim = (N_k[0][ik][inu, imu].imag + N_k[1][ik][inu, imu].imag) /2.0
-                            f.write(f" {valre:.14f} {valim:.14f}\n")
+                            f.write(f" {valre:.14f} {valim:.14f}")
                         f.write("\n")
 
         return band_energy_correction

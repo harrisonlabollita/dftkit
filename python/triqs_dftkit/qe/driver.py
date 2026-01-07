@@ -338,7 +338,7 @@ class Driver:
 
     def band_energy_and_write_charge_update(self, N_k):
 
-        n_spin, n_k, n_max_bands, _ = N_k.shape
+        n_k, n_spin, n_max_bands, _ = N_k.shape
 
         fermi_weights, n_bands_per_k, Hk, bz_weights = None, None, None, None
         spin_to_data_index = [0,0]
