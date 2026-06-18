@@ -198,7 +198,7 @@ class Converter(ConverterTools):
             misc_results = None
             if mpi.is_master_node():
                 misc_results = read_misc_input(self.w90_seed, n_spin_blocks, n_k)
-            f_weights, band_window, fermi_energy, kpt_basis = mpi.bcast(misc_results)
+            f_weights, band_window, fermi_energy, kpt_basis, n_k_ibz = mpi.bcast(misc_results)
 
             # Get density from k-point weighted average and sum over all spins and bands
             density_required = np.sum(f_weights.T * kpt_weights) * (2 - SP)
@@ -343,6 +343,11 @@ class Converter(ConverterTools):
                     archive[self.misc_subgrp]['dft_fermi_weights'] = f_weights
                     archive[self.misc_subgrp]['band_window'] = band_window+1 # Change to 1-based index
                     archive[self.misc_subgrp]['kpts_cart'] = np.dot(kpts, kpt_basis.T)
+                    # When the DFT mesh has a reducible/irreducible split (VASP with
+                    # symmetry), expose the IBZ count so calc_density_correction writes
+                    # the density correction only for the IBZ k-points (cf. PLOVASP).
+                    if n_k_ibz < n_k:
+                        archive[self.misc_subgrp]['n_k_ibz'] = n_k_ibz
         mpi.barrier()
 
         # Makes Fermi energy a class variable for testing
@@ -928,14 +933,15 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
     nnkp_filename = w90_seed + '.nnkp'
     locproj_filename = os.path.join(w90_seed_dir, 'LOCPROJ')
     outcar_filename = os.path.join(w90_seed_dir, 'OUTCAR')
+    vasph5_filename = os.path.join(w90_seed_dir, 'vaspout.h5')
     abiout_filename = w90_seed + '.abinit'
 
     if os.path.isfile(nscf_filename):
         read_from = 'qe'
         mpi.report('Reading DFT band occupations from Quantum Espresso output {}'.format(nscf_filename))
-    elif os.path.isfile(locproj_filename) and os.path.isfile(outcar_filename):
+    elif os.path.isfile(vasph5_filename) or (os.path.isfile(locproj_filename) and os.path.isfile(outcar_filename)):
         read_from = 'vasp'
-        mpi.report('Reading DFT band occupations from Vasp output {}'.format(locproj_filename))
+        mpi.report('Reading DFT band occupations from Vasp output')
     elif os.path.isfile(abiout_filename):
         read_from = 'abinit'
         mpi.report("Reading DFT band occupations from ABINIT output {}".format(abiout_filename))
@@ -949,6 +955,10 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
     reading_kpt_basis = False
     lines_read_kpt_basis = 0
     kpt_basis = np.zeros((3, 3))
+    # Number of irreducible k-points; defaults to the full mesh (no reduction).
+    # For VASP with symmetry it is set below so calc_density_correction writes
+    # the density correction only for the IBZ (as the PLOVASP converter does).
+    n_k_ibz = n_k
 
     if read_from == 'qe':
         occupations = []
@@ -986,25 +996,58 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
             flattened_occs = [float(item) for sublist in occs for item in sublist]
             occupations.append(flattened_occs)
     elif read_from == 'vasp':
-        # Reads LOCPROJ
-        with open(locproj_filename, 'r') as file:
-            header = file.readline()
-            n_ks = int(header.split()[2])
-            fermi_energy = float(header.split()[4])
-
-            occupations = np.loadtxt((line for line in file if 'orbital' in line), usecols=5)
-        occupations = occupations.reshape((n_k, n_ks))
-
-        # Read reciprocal vectors from OUTCAR
-        with open(outcar_filename, 'r') as file:
-            for line in file:
-                if 'reciprocal lattice vectors' in line:
-                    reading_kpt_basis = True
-                elif reading_kpt_basis:
-                    kpt_basis[lines_read_kpt_basis, :] = line.split()[3:6]
-                    lines_read_kpt_basis += 1
-                    if lines_read_kpt_basis == 3:
-                        break
+        if os.path.isfile(vasph5_filename):
+            # Preferred: read everything from vaspout.h5 (the official location,
+            # written by VASP with LSYNCH5=.TRUE.) -- the same datasets the PLOVASP
+            # converter reads. No dependence on LOCPROJ/OUTCAR.
+            with HDFArchive(vasph5_filename, 'r') as archive:
+                fermi_energy = float(archive['results/electron_dos']['efermi'])
+                eigenvalues = archive['results/electron_eigenvalues']
+                ferw = np.array(eigenvalues['fermiweights'])                    # (nspin, n_k_ibz, n_ks)
+                symmap = np.array(eigenvalues['kpoints_symmetry_mapping']) - 1   # full-BZ -> IBZ, 0-based
+                positions = archive['results/positions']
+                a_brav = np.array(positions['lattice_vectors'])
+                scale = float(positions['scale'])
+            # Unfold occupations from the IBZ onto the full BZ (spin block 0; n_spin_blocks==1)
+            occupations = ferw[0, symmap, :]
+            n_ks = occupations.shape[1]
+            # Reciprocal basis (2*pi-less, same convention as the OUTCAR vectors)
+            if scale < 0:
+                scale = (-scale / np.linalg.det(a_brav)) ** (1.0 / 3)
+            kpt_basis = np.linalg.inv((a_brav * scale).T)
+            # VASP builds the full BZ mesh IBZ-first (the first n_ibz mesh points are
+            # the irreducible ones, in IBZ order). Verify this and expose n_k_ibz so
+            # calc_density_correction writes the GAMMA only for VASP's IBZ k-points.
+            n_ibz = ferw.shape[1]
+            if n_ibz < n_k and np.array_equal(symmap[:n_ibz], np.arange(n_ibz)):
+                n_k_ibz = n_ibz
+            elif n_ibz < n_k:
+                mpi.report('WARNING: the irreducible k-points are not the leading block '
+                           'of the mesh; writing the full-BZ density correction. Run VASP '
+                           'with ISYM=-1 (no symmetry) for the w90 CSC charge update.')
+        else:
+            # Legacy fallback: occupations + n_ks from LOCPROJ, Fermi from the LOCPROJ
+            # header, reciprocal vectors from OUTCAR.
+            with open(locproj_filename, 'r') as file:
+                header = file.readline()
+                n_ks = int(header.split()[2])
+                occupations = np.loadtxt((line for line in file if 'orbital' in line), usecols=5)
+            occupations = occupations.reshape((n_k, n_ks))
+            try:
+                fermi_energy = float(header.split()[4])
+            except (IndexError, ValueError):
+                raise IOError('Could not determine the DFT Fermi energy. It should be provided '
+                              'in vaspout.h5 under results/electron_dos/efermi; make sure VASP '
+                              'writes it (e.g. set LSYNCH5=.TRUE. in the INCAR for CSC runs).')
+            with open(outcar_filename, 'r') as file:
+                for line in file:
+                    if 'reciprocal lattice vectors' in line:
+                        reading_kpt_basis = True
+                    elif reading_kpt_basis:
+                        kpt_basis[lines_read_kpt_basis, :] = line.split()[3:6]
+                        lines_read_kpt_basis += 1
+                        if lines_read_kpt_basis == 3:
+                            break
 
     elif read_from == 'abinit':
         occupations = []
@@ -1067,7 +1110,7 @@ def read_misc_input(w90_seed, n_spin_blocks, n_k):
     f_weights = included_occupations.reshape(included_occupations.shape[0], 1,
                                              included_occupations.shape[1])
 
-    return f_weights, band_window, fermi_energy, kpt_basis
+    return f_weights, band_window, fermi_energy, kpt_basis, n_k_ibz
 
 
 def reorder_orbital_and_spin(nwfs, wannier_hr, u_total):
