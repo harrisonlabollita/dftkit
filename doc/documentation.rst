@@ -43,8 +43,8 @@ in the corresponding guide page of the DFTTools documentation:
      - :py:class:`triqs_dftkit.wien2k.Converter`
      - :py:class:`triqs_dftkit.wien2k.Driver`
      - `conv_wien2k <https://triqs.github.io/dft_tools/latest/guide/conv_wien2k.html>`_
-   * - VASP (PLOVasp)
-     - :py:class:`triqs_dftkit.vasp.Converter`
+   * - VASP
+     - :py:class:`triqs_dftkit.vasp.Converter` (PLOVasp) or via Wannier90
      - *in development*
      - `conv_vasp <https://triqs.github.io/dft_tools/latest/guide/conv_vasp.html>`_
    * - Quantum Espresso
@@ -55,17 +55,17 @@ in the corresponding guide page of the DFTTools documentation:
      - via Wannier90
      - :py:class:`triqs_dftkit.abinit.Driver`
      - `conv_W90 <https://triqs.github.io/dft_tools/latest/guide/conv_W90.html>`_
-   * - Wannier90
-     - :py:class:`triqs_dftkit.wannier90.Converter`
-     - —
-     - `conv_W90 <https://triqs.github.io/dft_tools/latest/guide/conv_W90.html>`_
    * - Elk
      - :py:class:`triqs_dftkit.elk.Converter`
-     - —
+     - ✗
      - `conv_elk <https://triqs.github.io/dft_tools/latest/guide/conv_elk.html>`_
+   * - Wannier90
+     - :py:class:`triqs_dftkit.wannier90.Converter`
+     - ✗
+     - `conv_W90 <https://triqs.github.io/dft_tools/latest/guide/conv_W90.html>`_
    * - H(k)
      - :py:class:`triqs_dftkit.hk.Converter`
-     - —
+     - ✗
      - `conv_generalhk <https://triqs.github.io/dft_tools/latest/guide/conv_generalhk.html>`_
 
 Tutorials
