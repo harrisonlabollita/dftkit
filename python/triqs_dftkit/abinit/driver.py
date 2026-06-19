@@ -34,7 +34,7 @@ class Driver(object):
         Hk            = mpi.bcast(Hk)
         bz_weights    = mpi.bcast(bz_weights)
         spin_to_data_index = mpi.bcast(spin_to_data_index)
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         density_matrix_dft = [ [ fermi_weights[ik,idx,:].astype(complex) for ik in range(n_k) ] for idx in spin_to_data_index]
         band_energy_correction = 0.0

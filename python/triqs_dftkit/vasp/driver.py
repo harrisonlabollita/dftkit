@@ -171,7 +171,7 @@ class Driver:
             if time.time() - start > timeout:
                 raise DFTWorkflowError(f"VASP did not create vasp.lock within {timeout}s")
             time.sleep(1)
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
     def _wait_for_vasp(self, timeout=3600):
         """Wait for VASP to finish (lock file disappears)."""
@@ -182,7 +182,7 @@ class Driver:
             if mpi.is_master_node() and not self._is_vasp_running():
                 raise DFTWorkflowError("VASP process has died unexpectedly")
             time.sleep(1)
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
     def _run_plo_converter(self):
         """Run the PLO converter to generate H(k) and projectors in the HDF5 file."""
@@ -196,7 +196,7 @@ class Driver:
             self.mpi_handler.report(f"[{datetime.now()}] Running VASP HDF5 converter")
             Converter(filename=self.seedname).convert_dft_input()
 
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
     def run_initial_stage(self, **kwargs) -> int:
         """
@@ -213,7 +213,7 @@ class Driver:
             for stale in ('STOPCAR', 'vasp.lock'):
                 if os.path.isfile(stale):
                     os.remove(stale)
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         # Fork VASP on master node
         vasp_process_id = 0
@@ -255,7 +255,7 @@ class Driver:
         # Trigger VASP to resume with updated charge
         if mpi.is_master_node():
             open('./vasp.lock', 'a').close()
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         # Wait for VASP to finish charge update
         self._wait_for_vasp()
@@ -299,7 +299,7 @@ class Driver:
         bz_weights    = mpi.bcast(bz_weights)
         spin_to_data_index = mpi.bcast(spin_to_data_index)
         SO            = mpi.bcast(SO)
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         density_matrix_dft = [[fermi_weights[ik, idx, :].astype(complex) for ik in range(n_k)] for idx in spin_to_data_index]
         band_energy_correction = 0.0

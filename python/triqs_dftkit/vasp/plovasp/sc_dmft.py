@@ -117,7 +117,7 @@ def run_all(vasp_pid, dmft_cycle, cfg_file, n_iter, n_iter_dft):
     while vasp_running:
         if debug: print(bcolors.RED + "rank %s"%(mpi.rank) + bcolors.ENDC)
         mpi.report("  Waiting for VASP lock to disappear...")
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
         while is_vasp_lock_present():
             time.sleep(1)
             if debug: print(bcolors.YELLOW + " waiting: rank %s"%(mpi.rank) + bcolors.ENDC)
@@ -136,11 +136,11 @@ def run_all(vasp_pid, dmft_cycle, cfg_file, n_iter, n_iter_dft):
             converter.generate_and_output_as_text(cfg_file, vasp_dir='./')
             # Read energy from OSZICAR
             dft_energy = get_dft_energy()
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         if debug: print(bcolors.GREEN + "rank %s"%(mpi.rank) + bcolors.ENDC)
         corr_energy, sum_k = dmft_cycle()
-        mpi.barrier()
+        mpi.barrier(poll_msec=100)
 
         if mpi.is_master_node():
             total_energy = dft_energy + corr_energy - sum_k.dc_energ[0]
@@ -180,7 +180,7 @@ def run_all(vasp_pid, dmft_cycle, cfg_file, n_iter, n_iter_dft):
             # Writes out GAMMA file
             sum_k.calc_density_correction(dm_type='vasp')
 
-            mpi.barrier()
+            mpi.barrier(poll_msec=100)
             if mpi.is_master_node():
                 open('./vasp.lock', 'a').close()
             while is_vasp_lock_present():
