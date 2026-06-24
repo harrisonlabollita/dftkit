@@ -2,3 +2,37 @@ compile_commands.json
 doc/_autosummary
 doc/cpp2rst_generated
 .claude
+
+# VASP pseudopotentials are copyrighted and must not be committed (anywhere)
+POTCAR
+
+# VASP run outputs
+CHG
+CHGCAR
+CONTCAR
+DOSCAR
+EIGENVAL
+IBZKPT
+LOCPROJ
+OSZICAR
+OUTCAR
+PCDAT
+PROCAR
+PROJCAR
+REPORT
+STOPCAR
+WAVECAR
+XDATCAR
+vasprun.xml
+vaspout.h5
+vaspgamma.h5
+vasp.h5
+vasp.ctrl
+vasp.pg*
+wannier90.win
+*.nnkp
+
+# Generated VASP converter test artifacts (regenerated from vaspout.h5 at test time)
+test/python/vasp/converter/*.ctrl
+test/python/vasp/converter/*.pg[0-9]
+test/python/vasp/converter/*.test.h5
