@@ -19,7 +19,7 @@
 #
 # ##############################################################################
 
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 cmake_policy(VERSION ${CMAKE_VERSION})
 
 # ############
@@ -28,7 +28,7 @@ project(triqs_dftkit VERSION 4.0.0 LANGUAGES CXX Fortran)
 get_directory_property(IS_SUBPROJECT PARENT_DIRECTORY)
 
 # ############
-# Load TRIQS and CPP2PY
+# Load TRIQS
 find_package(TRIQS 4.0 REQUIRED)
 
 # Get the git hash & print status
@@ -78,6 +78,17 @@ option(Build_Documentation "Build documentation" OFF)
 option(Build_Tests "Build tests" ON)
 if(Build_Tests)
   enable_testing()
+  # When built as a dependency of a project configured with the LLVM sanitizers
+  # (-DASAN/-DUBSAN), our Python tests load that project's instrumented TRIQS
+  # libraries and need the sanitizer runtime preloaded. Locate it here so that
+  # SANITIZER_RT_PRELOAD is populated before the test commands are registered.
+  # No-op in a standalone build, where ASAN/UBSAN are unset.
+  if(ASAN)
+    find_package(sanitizer REQUIRED COMPONENTS asan)
+  endif()
+  if(UBSAN)
+    find_package(sanitizer REQUIRED COMPONENTS ubsan)
+  endif()
 endif()
 
 # Provide GNU Installation directories
