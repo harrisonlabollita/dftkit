@@ -1,6 +1,7 @@
 # load triqs helper to set up tests
 set(all_tests
     atm
+    charge_update
     converter
     inpconf
     plotools
