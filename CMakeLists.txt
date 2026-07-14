@@ -90,6 +90,9 @@ endif()
 # Build static libraries by default
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 
+# Build a Debian package
+option(BUILD_DEBIAN_PACKAGE "Build a deb package" OFF)
+
 # Export the list of compile-commands into compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -164,7 +167,6 @@ add_subdirectory(packaging)
 # #############
 # Debian Package
 
-option(BUILD_DEBIAN_PACKAGE "Build a deb package" OFF)
 if(BUILD_DEBIAN_PACKAGE AND NOT IS_SUBPROJECT)
   if(NOT CMAKE_INSTALL_PREFIX STREQUAL "/usr")
     message(FATAL_ERROR "CMAKE_INSTALL_PREFIX must be /usr for packaging")
