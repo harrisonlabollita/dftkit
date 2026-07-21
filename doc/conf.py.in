@@ -2,6 +2,7 @@
 #
 # TRIQS documentation build configuration file
 
+import os
 import sys
 sys.path.insert(0, "@CMAKE_CURRENT_SOURCE_DIR@/sphinxext")
 
@@ -99,9 +100,11 @@ html_context = {
     # Version switcher flyout (rendered by _templates/versions.html, which
     # overrides the empty versions.html shipped by sphinx_rtd_theme 3.x). The
     # list is static -- update it when a new release line is published.
-    'current_version': version,
+    # current_version is the "v: <x>" label: in CI it is the built branch
+    # (unstable / 4.0.x / ...), which matches a slug below; local builds fall
+    # back to this project's release line.
+    'current_version': os.environ.get('GITHUB_REF_NAME', '@PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@.x'),
     'versions': [
-        ['latest',   'https://triqs.github.io/@PROJECT_NAME@/latest/'],
         ['unstable', 'https://triqs.github.io/@PROJECT_NAME@/unstable/'],
         ['4.0.x',    'https://triqs.github.io/@PROJECT_NAME@/4.0.x/'],
         ['3.3.x',    'https://triqs.github.io/@PROJECT_NAME@/3.3.x/'],
