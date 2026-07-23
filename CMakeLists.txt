@@ -27,8 +27,8 @@ cmake_policy(VERSION ${CMAKE_VERSION})
 project(app4triqs VERSION 4.0.0 LANGUAGES CXX)
 get_directory_property(IS_SUBPROJECT PARENT_DIRECTORY)
 
-# branch label for the docs version switcher
-set(VERSION_SUFFIX unstable)
+# version displayed in the documentation
+set(BRANCH_FOR_DOC unstable)
 
 # ############
 # Load TRIQS
