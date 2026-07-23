@@ -48,8 +48,7 @@ autosummary_generate = True
 autosummary_imported_members = False
 
 project = '@PROJECT_NAME@'
-version = '@PROJECT_VERSION@'
-version_suffix = '@VERSION_SUFFIX@'
+version = '@BRANCH_FOR_DOC@'
 
 # this makes the current project version available as var in every rst file
 rst_epilog = """
@@ -100,9 +99,7 @@ html_context = {
     # Version switcher flyout (rendered by _templates/versions.html, which
     # overrides the empty versions.html shipped by sphinx_rtd_theme 3.x). The
     # list is static -- update it when a new release line is published.
-    # current_version is the "v: <x>" label: "unstable" on the dev branch (set
-    # via VERSION_SUFFIX in the top-level CMakeLists.txt), else this release line.
-    'current_version': '@PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@.x' if version_suffix == '' else 'unstable',
+    'current_version': version,
     'versions': [
         ['unstable', 'https://triqs.github.io/@PROJECT_NAME@/unstable/'],
         ['4.0.x',    'https://triqs.github.io/@PROJECT_NAME@/4.0.x/'],
@@ -180,7 +177,7 @@ def mark_autosummary_sources(app, docname, source):
     Sphinx hook to mark rst files that contain an autosummary directive.
 
     This is needed in the processing hook to identify files with autosummary
-    directives. 
+    directives.
 
     Parameters
     ----------
@@ -222,7 +219,7 @@ def process_docstring(app, what, name, obj, options, lines):
     """
     if not lines:
         return
-    
+
     # process doc string only for autosummary tables
     docname = app.env.temp_data.get('docname') or getattr(app.env, 'docname', None)
     if docname in getattr(app.env, "_docs_with_autosummary", set()):
@@ -233,7 +230,7 @@ def process_docstring(app, what, name, obj, options, lines):
         first_line = lines[first_idx] if first_idx is not None else None
         if not first_line:
             return
-        
+
         # handle wrapped classes with no description
         if first_line == 'Dispatched C++ constructor(s).' or first_line == 'Synthesized constructor with the following keyword arguments:':
             # somehow this not only changes the table but also the actual documentation page
@@ -258,7 +255,7 @@ def process_docstring(app, what, name, obj, options, lines):
             match = _dispatched_desc_re.match(doc_str)
 
             # we only care about lines[0] since autosummary uses it for the function table
-            lines[0] = match.group(2) if match.group(1) else doc_str 
+            lines[0] = match.group(2) if match.group(1) else doc_str
             lines[1] = ''
 
 
