@@ -1,4 +1,5 @@
 [![build](https://github.com/TRIQS/dftkit/workflows/build/badge.svg)](https://github.com/TRIQS/dftkit/actions?query=workflow%3Abuild)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21691784.svg)](https://doi.org/10.5281/zenodo.21691784)
 
 # triqs_dftkit
 
