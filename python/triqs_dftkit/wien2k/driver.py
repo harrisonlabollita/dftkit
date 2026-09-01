@@ -4,8 +4,7 @@ WIEN2k driver for TRIQS+DFT workflow automation.
 This module provides a driver class for automating WIEN2k calculations in the
 context of charge self-consistent (CSC) DMFT calculations with TRIQS/modest.
 
-Unlike VASP (one persistent forked process) or Quantum ESPRESSO (one executable
-per step), WIEN2k is a *chain* of Fortran programs -- lapw0, lapw1, lapw2, lcore,
+WIEN2k is a *chain* of Fortran programs -- lapw0, lapw1, lapw2, lcore,
 mixer -- each launched through the ``x`` tcsh script, which writes the ``.def``
 file of unit -> filename assignments that the program reads.  The SCF loop that
 normally drives them lives in the ``run_lapw`` tcsh script.
@@ -17,10 +16,7 @@ WIEN2k's own QDMFT support cannot be reused because it inverts the control flow
 DftDriver requires python to be the caller.
 
 Scope: serial, non-magnetic (SP=0, SO=0).  ``lapw2 -qdmft`` cannot be run in
-parallel at all: the entire DMFT code path is inside ``#ifndef Parallel`` in
-SRC_lapw2/qdmft.F and is therefore compiled out of ``lapw2_mpi``.  Independently,
-its k-point counter is process-local while the density matrix array is indexed
-globally, so k-point parallelism is broken too.
+parallel at all.
 """
 import os, re, shutil, subprocess
 from datetime import datetime
@@ -45,15 +41,15 @@ class DFTWorkflowError(Exception):
 _DEFAULT_ENV_VARS = ['PATH', 'LD_LIBRARY_PATH', 'SHELL', 'PWD', 'HOME', 'OMP_NUM_THREADS',
                      'OMPI_MCA_btl_vader_single_copy_mechanism', 'WIENROOT', 'SCRATCH']
 
-# WIEN2k works in Rydberg, modest in eV.
+# WIEN2k works in Rydberg, TRIQS in eV.
 _RY_IN_EV = 13.605698
 
 # Flags that make x rewrite the first five characters of case.in2 in place and
 # restore the original from .oldin2 afterwards.
 _IN2_MODE_FLAGS = ('-almd', '-qdmft', '-fermi', '-qtl', '-alm', '-efg')
 
-# Files saved to <name>_old before lapw0 and before mixer, as run_lapw:471-474
-# and run_lapw:991-995 do.  case.clmsum_old is mixer's previous-iteration density
+# Files saved to <name>_old before lapw0 and before mixer as run_lapw.
+# case.clmsum_old is mixer's previous-iteration density
 # on unit 10, so the second set is required for mixing to work at all.
 _LAPW0_SAVE = ('vsp', 'vns', 'r2v')
 _MIXER_SAVE = ('clmsum', 'vrespsum', 'tausum')
@@ -66,6 +62,9 @@ _SCF_PARTS = ('0', '1', 'so', '2', '1s', '2s', 'c')
 # value inside the parentheses is the per-atom maximum, which is what testconv
 # tests against the -cc limit; the trailing number is the cell total.
 _DIS_RE = re.compile(r'\(\s*([-+0-9.EDed]+)\s+for atom')
+
+# DMFT label marker in the : LABEL style of run_lapw                     
+_DMFT_MARKER = ':QDMFT:  CHARGE DENSITY UPDATED FROM DMFT OCCUPATIONS'
 
 
 class Driver(object):
@@ -117,6 +116,9 @@ class Driver(object):
         self.ccut = ccut
         self.verbosity = verbosity
         self.fortran_to_replace = {'D': 'E'}
+        # Set when this process inherits an SCF it did not run, and cleared by the
+        # next mixer call.  See _flush_mixing_history.
+        self._mixing_flush_pending = False
 
     def __repr__(self):
         return (f"Wien2kDriver(seedname={self.seedname}, wienroot={self.wienroot}, "
@@ -251,10 +253,48 @@ class Driver(object):
         if not os.path.isfile(self._f('indmftpr')):
             raise DFTWorkflowError(
                 f"{self._f('indmftpr')} not found; copy and edit "
-                f"{os.path.join(self.wienroot, 'SRC_templates', 'case.indmftpr')}")
+                f"{os.path.join(self.wienroot, 'SRC_templates', 'case.indmftpr')}"
+                "or use the command line tool init_dmftpr")
         return self._run_checked([self.dmftproj_exe], 'dmftproj.error', 'dmftproj')
 
     # ------------------------------------------------------------- scf output
+
+    def _mark_dmft_cycle(self):
+        """Record in case.scf that the cycle starting here is a DMFT charge update."""
+        if not mpi.is_master_node():
+            return
+        with open(self._f('scf'), 'a') as out:
+            out.write(f"\n{_DMFT_MARKER}\n\n")
+
+    def _run_mixer(self):
+        """
+        Run mixer, first flushing the mixing history if this process inherited one.
+
+        The flush is deferred to here rather than done where it is decided, so
+        that ``.restart`` is only ever written immediately before the mixer call
+        that consumes it.  Writing it earlier would leave a file that some later,
+        unrelated mixer call would pick up and act on.
+        """
+        if self._mixing_flush_pending:
+            if mpi.is_master_node():
+                open('.restart', 'w').close()
+            self._mixing_flush_pending = False
+            mpi.barrier(poll_msec=100)
+        self._run_x('mixer')
+
+    def _flush_mixing_history(self, reason):
+        """
+        Arrange for the next mixer call to restart its mixing, and say so.
+
+        Called when this process is about to mix against a case.broyd* history it
+        did not build.  The Broyden vectors encode a sequence of density updates,
+        so continuing against a history whose density had a different character --
+        a DMFT-corrected one, or one from an interrupted run -- mixes the current
+        residual into predictions derived from unrelated ones.
+        """
+        self._warn(f"{reason}; flushing the Broyden mixing history via .restart, "
+                   "so the next mixer call restarts its mixing with a reduced DMIX")
+        self._mixing_flush_pending = True
 
     def _append_to_scf(self, parts):
         """
@@ -278,10 +318,9 @@ class Driver(object):
 
         run_lapw does this at two points in every cycle and both are load
         bearing.  Most importantly mixer reads case.clmsum_old on unit 10 as the
-        previous-iteration density (SRC_mixer/mixer.F:881-895): without the copy
-        it mixes against a missing or stale density, which emits no :DIS line and
-        sends the SCF diverging until the linearisation energies go bad and
-        select.f aborts with "no energy limits found".
+        previous-iteration density: without the copy it mixes against a missing 
+        or stale density, which emits no :DIS line and sends the SCF diverging until 
+        the linearisation energies go bad.
         """
         if not mpi.is_master_node():
             return
@@ -291,29 +330,42 @@ class Driver(object):
                 shutil.copyfile(path, self._f(ext + '_old'))
 
     @staticmethod
-    def _scf_tags(path):
+    def _scf_tags(path, stop_at_dmft=False):
         """
-        Parse the (:ENE, :DIS) values out of a WIEN2k scf file.
+        Parse a WIEN2k scf file into one ``(ene, dis)`` pair per mixer record.
 
         :ENE is written in three variants (**INFO****, *WARNING**, **********), so
         the energy is the last whitespace token rather than a fixed column.  :DIS
         carries two numbers; the one inside the parentheses is the per-atom
         maximum, which is what testconv compares against the -cc limit, and the
         trailing one is the cell total.
+
+        Pairing is done by record rather than by zipping two independent lists.
+        mixer writes :DIS only inside, i.e. only when it could read case.clmsum_old, 
+        but writes :ENE unconditionally, so a cycle with no previous density contributes 
+        an :ENE with no :DIS.  Zipping and padding the shorter list at the end would attribute
+        every later :DIS to the cycle before its own and leave the newest cycle
+        with ``dis=None``, which silently disables the charge convergence test.
+        Within one record :DIS precedes :ENE, so :ENE closes the record.
+
+        ``stop_at_dmft`` stops at the first _DMFT_MARKER, leaving the caller only
+        the plain-DFT part of the history.
         """
-        energies, distances = [], []
+        history, dis = [], None
         if not os.path.isfile(path):
-            return energies, distances
+            return history
         with open(path) as fh:
             for line in fh:
+                if stop_at_dmft and line.startswith(_DMFT_MARKER):
+                    break
                 if line.startswith(':ENE'):
-                    energies.append(float(line.split()[-1]))
+                    history.append((float(line.split()[-1]), dis))
+                    dis = None
                 elif line.startswith(':DIS'):
                     match = _DIS_RE.search(line)
-                    distances.append(
-                        float(match.group(1).replace('D', 'E').replace('d', 'e'))
-                        if match else float(line.split()[-1]))
-        return energies, distances
+                    dis = (float(match.group(1).replace('D', 'E').replace('d', 'e'))
+                           if match else float(line.split()[-1]))
+        return history
 
     def _read_scfm(self):
         """
@@ -326,16 +378,17 @@ class Driver(object):
         path = self._f('scfm')
         if not os.path.isfile(path):
             raise DFTWorkflowError(f"{path} was not written; mixer did not run")
-        energies, distances = self._scf_tags(path)
-        if not energies:
+        history = self._scf_tags(path)
+        if not history:
             raise DFTWorkflowError(f"no :ENE line in {path}")
-        if not distances:
+        ene, dis = history[-1]
+        if dis is None:
             # mixer omits :DIS when it has no previous density to compare
             # against, which means case.clmsum_old was missing -- the mixing is
             # then meaningless even though mixer exits cleanly.
             self._warn(f"no :DIS line in {path}; mixer had no previous density, "
                        "so the charge convergence test is being skipped")
-        return energies[-1], (distances[-1] if distances else None)
+        return ene, dis
 
     def read_dft_energy(self):
         """
@@ -345,17 +398,19 @@ class Driver(object):
         lapw2 -qdmft folds ``correner`` into :SUM (ETOT = ETOT + correner) and
         subtracts the DFT in-window band energy itself.  Callers must therefore
         not add ``Eint_m_dc`` again, and there is no separate band energy
-        correction to compute -- unlike the VASP and QE drivers.
+        correction to compute.
         """
         energy = None
         if mpi.is_master_node():
             path = self._f('scf')
             if not os.path.isfile(path):
                 raise DFTWorkflowError(f"{path} does not exist; no SCF has run")
-            energies, _ = self._scf_tags(path)
-            if not energies:
+            # Deliberately not stop_at_dmft: this must report the current total
+            # energy, which after a charge update is the DMFT one.
+            history = self._scf_tags(path)
+            if not history:
                 raise DFTWorkflowError(f"no :ENE line in {path}")
-            energy = energies[-1] * _RY_IN_EV
+            energy = history[-1][0] * _RY_IN_EV
         return mpi.bcast(energy)
 
     # -------------------------------------------------------------- scf cycle
@@ -406,12 +461,15 @@ class Driver(object):
         Returns ``(ene, dis)`` read from case.scfm and broadcast, so that every
         rank reaches the same convergence verdict and stays in lockstep.
         """
+        if mpi.is_master_node():
+            self._set_in2_mode('TOT')
+
         self._save_old(_LAPW0_SAVE)
         for program in ('lapw0', 'lapw1', 'lapw2', 'lcore'):
             self._run_x(program)
         self._append_to_scf(_SCF_PARTS)
         self._save_old(_MIXER_SAVE)
-        self._run_x('mixer')
+        self._run_mixer()
         self._append_to_scf(('m',))
 
         values = self._read_scfm() if mpi.is_master_node() else None
@@ -446,6 +504,14 @@ class Driver(object):
         for name in os.listdir('.'):
             if '.broyd' in name:
                 os.remove(name)
+        # Truncate case.scf too.  Without this the abandoned cycles stay on disk
+        # and _scf_history_on_disk splices them onto the new ones, so a later
+        # restart applies the convergence test across the seam between two
+        # unrelated runs -- and the caller was promised the history was discarded.
+        if os.path.isfile(self._f('scf')):
+            self._report(f"discarding the {len(self._scf_history_on_disk())} cycles "
+                         f"already in {self._f('scf')}")
+            open(self._f('scf'), 'w').close()
 
     def _run_scf(self, n_iter=None, history=None):
         """
@@ -496,6 +562,15 @@ class Driver(object):
         if not force_scf and self._converged(history):
             self._report(f"case.scf already holds a converged SCF ({len(history)} cycles); "
                        "reusing it (force_scf=True to redo)")
+            resumed = self._has_dmft_cycles() if mpi.is_master_node() else None
+            if mpi.bcast(resumed):
+                # A CSC run being resumed: case.clmsum is the DMFT-corrected
+                # density from the interrupted run, and the mixing history behind
+                # it belongs to that run.  Nothing here reruns the SCF -- the
+                # density is kept as it stands -- but the next charge update will
+                # mix against that inherited history.
+                self._flush_mixing_history(
+                    "case.scf records DMFT charge updates from an earlier run")
             return history
 
         if force_scf or not history:
@@ -504,7 +579,17 @@ class Driver(object):
             return self._run_scf(history=[])
 
         self._report(f"continuing the SCF from {len(history)} cycles already in case.scf")
+        self._flush_mixing_history(
+            f"resuming an SCF from {len(history)} cycles this process did not run")
         return self._run_scf(history=history)
+
+    def _has_dmft_cycles(self):
+        """Whether case.scf records a DMFT charge update from an earlier run."""
+        path = self._f('scf')
+        if not os.path.isfile(path):
+            return False
+        with open(path) as fh:
+            return any(line.startswith(_DMFT_MARKER) for line in fh)
 
     def scf_converged(self):
         """
@@ -555,11 +640,14 @@ class Driver(object):
         return self._run_scf(n_iter=n_iter)
 
     def _scf_history_on_disk(self):
-        """(ene, dis) pairs recovered from an existing case.scf, for restart."""
-        energies, distances = self._scf_tags(self._f('scf'))
-        # :DIS may be absent from older runs; pad so the pairs line up.
-        distances += [None] * (len(energies) - len(distances))
-        return list(zip(energies, distances))
+        """
+        (ene, dis) pairs recovered from an existing case.scf, for restart.
+
+        Stops at the first DMFT marker: the cycles after it were produced by
+        run_update_stage against a DMFT-corrected density, and the DFT ecut/ccut
+        limits say nothing useful about them.
+        """
+        return self._scf_tags(self._f('scf'), stop_at_dmft=True)
 
     # --------------------------------------------------------- dmft interface
 
@@ -599,8 +687,8 @@ class Driver(object):
 
         The layout is fixed by the reader in SRC_lapw2/qdmft.F::readdata_qdmft::
 
-            mu                       (read, then unused)
-            beta                     (read, then unused)
+            mu                       in Ry  (read, then unused)
+            beta                     in Ry^-1 (read, then unused)
             per k-point:
                 nn                   must equal nb_top - nb_bot + 1
                 nn records of 2*nn reals: Re Im, one record per matrix *row*
@@ -653,8 +741,11 @@ class Driver(object):
                     f"has {Nk_avg.shape[1]}")
 
         with open(self._f('qdmft'), 'w') as fh:
-            fh.write("%.14f\n" % mu)
-            fh.write("%.14f\n" % beta)
+            # Converted to Ry / Ry^-1 for the file even though lapw2 discards
+            # both, so the values match what the format documents and what
+            # legacy dft_tools wrote.
+            fh.write("%.14f\n" % (mu / _RY_IN_EV))
+            fh.write("%.14f\n" % (beta * _RY_IN_EV))
             for ik, (_, nb_bot, nb_top, _w) in enumerate(windows):
                 nn = nb_top - nb_bot + 1
                 fh.write("%s\n" % nn)
@@ -708,8 +799,9 @@ class Driver(object):
         Safe to call repeatedly with a fresh ``N_k``, which modest's CSC loop
         does several times per DMFT iteration.
 
-        ``mu`` and ``beta`` are accepted only to fill their slots in case.qdmft;
-        lapw2 reads both and uses neither.
+        ``mu`` (eV) and ``beta`` (1/eV) are accepted only to fill their slots in
+        case.qdmft, converted to Ry there.  lapw2 reads both and uses neither, so
+        omitting them changes nothing.
         """
         self._write_qdmft(N_k, Eint_m_dc, mu=mu, beta=beta)
         mpi.barrier(poll_msec=100)
@@ -717,9 +809,10 @@ class Driver(object):
         # Serial by necessity: the DMFT path is compiled out of lapw2_mpi.
         self._run_x('lapw2', '-qdmft')
         self._run_x('lcore')
+        self._mark_dmft_cycle()
         self._append_to_scf(_SCF_PARTS)
         self._save_old(_MIXER_SAVE)
-        self._run_x('mixer')
+        self._run_mixer()
         self._append_to_scf(('m',))
 
         self._save_old(_LAPW0_SAVE)
@@ -729,16 +822,10 @@ class Driver(object):
 
         if mpi.is_master_node() and os.path.isfile('fort.77'):
             os.remove('fort.77')
-        self._report(f"DFT + DMFT Total Energy: {self.read_dft_energy()} eV")
+        # Four decimals, not the full float repr: a single charge update carries
+        # the solver's statistical error through N_k, so consecutive updates
+        # scatter by a few meV even after the density has settled.  Printing 17
+        # significant digits advertises a precision the number does not have.
+        self._report(f"DFT + DMFT Total Energy: {self.read_dft_energy():.4f} eV")
         mpi.barrier(poll_msec=100)
         return 0
-
-    def kill(self):
-        """
-        No-op teardown.
-
-        WIEN2k runs as short-lived subprocesses, so there is nothing to stop.
-        Defined because CSC drivers are torn down with ``driver.kill()`` in a
-        finally block, and the VASP driver does have a process to terminate.
-        """
-        return None
