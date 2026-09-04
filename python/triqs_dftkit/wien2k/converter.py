@@ -28,6 +28,7 @@ import numpy
 from h5 import *
 from ..converter_tools import *
 import os.path
+import re
 
 
 class Converter(ConverterTools):
@@ -396,6 +397,51 @@ class Converter(ConverterTools):
         if not (mpi.is_master_node()):
             return
 
+        def _read_kpath_labels(band_file, n_k):
+            """
+            Read the high-symmetry k-path labels appended to the end of
+            case.outband and map them onto the flattened band k-point index.
+
+            dmftproj writes one line per high-symmetry point after the projector
+            data, in fixed Fortran format (2i6,a): a running counter, the 1-based
+            position of the point along the band path, and the label, e.g.
+
+                    1     1GAMMA
+                    2   122X
+
+            Returns (labels, idx) where labels is a list of label strings and idx
+            is a 0-based numpy int array giving, for each label, the position of
+            that high-symmetry point in the n_k band path. Returns (None, None)
+            if no label block is present.
+            """
+            with open(band_file, 'r') as R:
+                lines = R.readlines()
+            while lines and not lines[-1].strip():
+                lines.pop()
+
+            # Walk backwards from the end of the file: the label block is the
+            # trailing run of lines matching 'counter index label'.
+            labels = []
+            idx = []
+            for line in reversed(lines):
+                match = re.match(r'\s*(\d+)\s+(\d+)\s*([A-Za-z]\S*)\s*$', line)
+                if match is None:
+                    break
+                labels.append(match.group(3))
+                idx.append(int(match.group(2)) - 1)
+            labels.reverse()
+            idx.reverse()
+
+            if not labels:
+                return None, None
+
+            idx = numpy.array(idx, dtype=int)
+            if idx[0] < 0 or idx[-1] >= n_k or numpy.any(numpy.diff(idx) <= 0):
+                mpi.report("convert_bands_input : WARNING : inconsistent high-symmetry point indices in %s; skipping k-path labels." % band_file)
+                return None, None
+
+            return labels, idx
+
         try:
             # get needed data from hdf file
             with HDFArchive(self.hdf_file, 'a') as ar:
@@ -483,6 +529,8 @@ class Converter(ConverterTools):
 
         # Reading done!
 
+        kpts_labels, kpts_labels_idx = _read_kpath_labels(self.band_file, n_k)
+
         # Save it to the HDF:
         with HDFArchive(self.hdf_file, 'a') as ar:
             if not (self.bands_subgrp in ar):
@@ -491,6 +539,9 @@ class Converter(ConverterTools):
             # created. If it exists, the data is overwritten!
             things_to_save = ['n_k', 'n_orbitals', 'proj_mat',
                           'hopping', 'n_parproj', 'proj_mat_all']
+            if kpts_labels is not None:
+                things_to_save += ['kpts_labels', 'kpts_labels_idx']
+                mpi.report("  Stored %i high-symmetry k-path labels: %s" % (len(kpts_labels), ', '.join(kpts_labels)))
             for it in things_to_save:
                 ar[self.bands_subgrp][it] = locals()[it]
 
